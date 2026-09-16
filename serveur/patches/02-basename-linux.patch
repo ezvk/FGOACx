@@ -1,0 +1,17 @@
+--- titles/fgo/index.py	2026-09-16 14:10:15.700246890 +0200
++++ titles/fgo/index.py	2026-09-16 14:10:15.718521476 +0200
+@@ -802,7 +802,13 @@
+         )
+ 
+         for selected_card in selected_cards:
+-            selected_name = path.basename(str(selected_card).replace("/", "\\"))
++            # ⚠️ PORTAGE LINUX : l original faisait replace("/", "\\") puis
++            # path.basename. Correct sous Windows, FAUX sous Linux :
++            # posixpath.basename ne connait pas l antislash comme separateur
++            # et renvoyait le chemin entier. Aucune carte ne correspondait
++            # alors au manifeste et l inventaire sortait a 0, quelle que soit
++            # la notation employee dans deck.json.
++            selected_name = str(selected_card).replace("\\", "/").rsplit("/", 1)[-1]
+             card = manifest_by_name.get(path.normcase(selected_name))
+ 
+             if card is not None:

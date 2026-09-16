@@ -1,0 +1,18 @@
+--- core/adb_handlers/base.py	2026-09-16 13:47:37.693439477 +0200
++++ core/adb_handlers/base.py	2026-09-16 13:47:37.788671471 +0200
+@@ -117,8 +117,14 @@
+         if re.fullmatch(r"^S[0-9A-Z]{3}[P]?$", self.game_id) is None:
+             raise ADBHeaderException(f"Game ID {self.game_id} is invalid!")
+         
++        # Deploiement local mono-borne : AMDaemon n a pas de boutique a declarer
++        # et envoie store_id = 0 (verifie dans le paquet : les 4 octets entre
++        # game_id "SDEJ" et le keychip sont nuls). Le controle d origine vise
++        # les installations en salle. Le refuser faisait echouer l envoi du
++        # journal de partie une fois par minute -- "Failed to send aime play
++        # log." cote amdaemon -- sans empecher le jeu de demarrer.
+         if self.store_id == 0:
+-            raise ADBHeaderException(f"Store ID cannot be 0!")
++            self.store_id = 1
+ 
+         if re.fullmatch(r"^A[0-9]{2}[A-Z][0-9]{2}[A-HJ-NP-Z][0-9]{4}$", self.keychip_id) is None:
+             raise ADBHeaderException(f"Keychip ID {self.keychip_id} is invalid!")

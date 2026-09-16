@@ -1,0 +1,10 @@
+# Aucun fichier de jeu dans ce depot.
+*.exe
+*.dll
+*.bmp
+*.farc
+*.rar
+*.7z
+*.zip
+*.ini
+!client/fgostub/*.c
