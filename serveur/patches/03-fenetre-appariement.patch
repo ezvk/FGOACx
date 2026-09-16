@@ -1,0 +1,52 @@
+Ouvrir une fenetre d appariement entre bornes
+
+PROBLEME MESURE le 2026-09-16. Tous les delais d appariement que le serveur
+annonce au client dans `attend` / `game_balance_param` valaient ZERO. La borne
+n avait donc aucune fenetre pour chercher un adversaire humain, et
+`bot_in_wait_sec = 0` faisait entrer un bot a l instant meme. Chaque bataille
+"multijoueur" devenait mecaniquement un `npc_battle` -- ce n est pas une
+absence de code d appariement, c est un reglage a zero.
+
+Les verrous de fonctionnalite, eux, sont deja ouverts dans le meme bloc :
+`grail_war_close: 0`, `vs_npc_battle_close: 0`, `score_ranking_close: 0`.
+
+Noms de champs releves dans ago.exe, pas devines : au voisinage de
+`gw_contest_apply_stat_list` on trouve `grail_war_match_wait_sec`,
+`coop_match_wait_sec`, `code_match_wait_sec`, `bot_in_wait_sec`,
+`is_enable_fairly_matching`, `burst_grail_war_lobby_wait_sec` et
+`burst_grail_war_match_wait_sec`.
+
+⚠️ CE CORRECTIF N EST PAS PROUVE SUFFISANT. Il ouvre la fenetre ; il ne dit pas
+que deux bornes se trouveront. `multi_battle_start` renvoie toujours
+`special_matching_type: 0` et aucune liste d adversaires, et
+`get_gw_contest_setting` reste un bouchon vide. L interet immediat est de
+pouvoir OBSERVER ce que le client tente pendant ces 30 secondes -- notamment
+sur UDP 30001, le socket que `ago.exe` ouvre sur 0.0.0.0.
+
+S applique sur titles/fgo/index.py du paquet Cloud23333 V1.02.
+--- a/titles/fgo/index.py
++++ b/titles/fgo/index.py
+@@ -20961,17 +20961,17 @@
+                 },
+                 "game_balance_param": {
+                     "after_battle_service_time": 0,
+-                    "bot_in_wait_sec": 0,
+-                    "burst_grail_war_lobby_wait_sec": 0,
+-                    "burst_grail_war_match_wait_sec": 0,
+-                    "code_match_wait_sec": 0,
+-                    "coop_match_wait_sec": 0,
++                    "bot_in_wait_sec": 25,
++                    "burst_grail_war_lobby_wait_sec": 20,
++                    "burst_grail_war_match_wait_sec": 30,
++                    "code_match_wait_sec": 30,
++                    "coop_match_wait_sec": 30,
+                     "credit_addition_service_time": 0,
+                     "default_gw_bond_exp_lose": 0,
+                     "default_gw_bond_exp_win": 0,
+                     "default_gw_cost_gp": 0,
+                     "fp_lottery_cost": 0,
+-                    "grail_war_match_wait_sec": 0,
++                    "grail_war_match_wait_sec": 30,
+                     "holy_grail_casting_num_max": 1,
+                     "holy_grail_casting_required_point": 100,
+                     "is_enable_fairly_matching": 1,

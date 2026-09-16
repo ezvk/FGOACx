@@ -16,8 +16,10 @@ Usage :
 Second client sur le meme serveur -- il lui faut une IDENTITE DISTINCTE, sinon
 ARTEMiS le voit comme la meme borne et le meme joueur :
     generer-runtime.py --racine ~/fgo-install --serveur 192.168.1.60 \
-                       --keychip A69E-01A88888889 --pcbid ACAE01A99999998 \
+                       --keychip A69E-01B88888888 --pcbid ACAE01B99999999 \
                        --suffixe-adresse 43
+⚠️ Le caractere qui differe doit etre DANS LES ONZE PREMIERS : le serveur ne
+voit que ceux-la, tirets retires. Voir le commentaire de --keychip.
 et une carte Aime differente : supprimer DEVICE/aime.txt, aimeGen=1 en genere
 une neuve au premier scan.
 """
@@ -70,11 +72,23 @@ def main() -> None:
     # sinon ils sont la meme borne et le meme joueur pour ARTEMiS.
     # Constate le 2026-09-16 : ishtar et enlil partageaient keychip, pcbid,
     # carte Aime ET addrSuffix.
+    # ⚠️ LES DEUX SONT TRONQUES A 11 CARACTERES dans l en-tete du protocole.
+    # Mesure du 2026-09-16 : le serveur journalise kc_serial='A69E01A8888' et
+    # b_serial='ACAE01A9999'. Les tirets sautent, et seuls les ONZE PREMIERS
+    # caracteres comptent. Une premiere tentative avait modifie le 9e chiffre --
+    # A69E-01A88888888 vs A69E-01A88888889 -- ce qui ne change RIEN : les deux
+    # donnent A69E01A8888. Pour distinguer deux bornes, modifier un caractere
+    # DANS les onze premiers, par exemple la lettre de groupe :
+    #   A69E-01A88888888  ->  A69E01A8888
+    #   A69E-01B88888888  ->  A69E01B8888   (distinct)
     a.add_argument("--keychip", default=None,
                    help="numero de serie du keychip. Motif observe en vrai : "
-                        r"A\d{2}(E|X)-(01|20)[ABCDU]\d{8}")
+                        r"A\d{2}(E|X)-(01|20)[ABCDU]\d{8}. ATTENTION : seuls "
+                        "les 11 premiers caracteres, tirets retires, sont vus "
+                        "par le serveur")
     a.add_argument("--pcbid", default=None,
-                   help="ALLS MAIN ID, sans tiret (nom d hote Windows)")
+                   help="ALLS MAIN ID, sans tiret. Meme troncature a 11 "
+                        "caracteres que le keychip")
     a.add_argument("--suffixe-adresse", default="42",
                    help="dernier octet sur le sous-reseau virtualise par netenv")
     a.add_argument("--netenv", default="1", choices=("0", "1"),
