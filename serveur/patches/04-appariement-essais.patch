@@ -1,0 +1,91 @@
+Deux essais pour reveiller la voie d appariement du client
+
+⚠️ AUCUN DES DEUX NE SUFFIT. Ils sont conserves parce qu ils sont justes en
+eux-memes -- la reponse ALL.Net devient conforme a ce qu AMDaemon attend -- mais
+le comportement du client est INCHANGE. Documente ici pour qu on ne les reessaie
+pas en croyant explorer du neuf.
+
+CE QU ON SAIT, MESURE le 2026-09-16 sur deux bornes distinctes en jeu :
+
+  - `ago.exe` contient TOUT le protocole de lobby : connect_ms / connect_gs,
+    is_possible_connect_ms, is_room_creator, is_matching_succeeded,
+    push_gs_packet_rel, NTVS_MS_PING, et une chaine de services
+    dist_spid -> lobby_spid -> room_spid -> gs_spid.
+  - Rien ne le met en route. Quatre multi_battle_start captures sur deux modes
+    (Grail War national, VS par code) : requete IDENTIQUE a chaque fois
+    (grail_war_id 0, coop_quest_id -1), aucun champ ne porte le code de VS,
+    aucune resolution de nom de serveur de matching, une seule diffusion et
+    elle est au demarrage, zero paquet entre les deux bornes -- alors que les
+    deux ecoutent bien en UDP 0.0.0.0:30001.
+
+ESSAI 1 -- special_matching_type 0 -> 1 dans la reponse a multi_battle_start.
+Sans effet.
+
+ESSAI 2 -- les trois champs ALL.Net manquants. Le parseur d AMDaemon
+(App/am/amdaemon.exe, chaines voisines de res_ver) attend exactement :
+    uri host name nickname region0 region_name0..3 place_id setting
+    country allnet_id client_timezone res_ver
+    title_uri title_host location_ip
+ARTEMiS n en envoyait que quinze. Les trois derniers sont desormais envoyes.
+Sans effet non plus.
+
+PISTE SUIVANTE, non exploree : le ROLE DE LA BORNE. FGO_Launcher.ps1 note que
+"FGO's generated amdaemon_aux.json contains the cabinet role selected by -sm".
+Une borne declaree autonome n a aucune raison de chercher un adversaire. Voir
+aussi MODE_SUB_DATA_TEST_MATCHING dans le binaire, et ms_login_wait_sec laisse
+a 0 dans game_balance_param.
+
+S applique sur ARTEMiS + le module FGO du paquet Cloud23333 V1.02.
+diff --git a/core/allnet.py b/core/allnet.py
+index e62baca..b9dbbf1 100644
+--- a/core/allnet.py
++++ b/core/allnet.py
+@@ -355,6 +355,35 @@ class AllnetServlet:
+         
+         self.logger.info(msg)
+ 
++        # ── TROIS CHAMPS QU AMDAEMON ATTEND ET QU ARTEMiS N ENVOYAIT PAS ──────
++        #
++        # Le parseur ALL.Net d AMDaemon (App/am/amdaemon.exe, chaines voisines de
++        # `res_ver`) lit exactement cette liste :
++        #   uri host name nickname region0 region_name0..3 place_id setting
++        #   country allnet_id client_timezone res_ver
++        #   title_uri title_host location_ip
++        # ARTEMiS en envoyait quinze ; les TROIS DERNIERS manquaient.
++        #
++        # Pourquoi ca compte : l API reseau du client (chaines voisines de
++        # NTVS_MATCHING dans ago.exe) expose `is_possible_connect_ms`,
++        # `connect_ms`, `connect_gs`, `is_room_creator` -- donc un Matching
++        # Server et un Game Server. Mesure du 2026-09-16 : le client ne resout
++        # AUCUN nom de serveur de matching (deux resolutions en tout : le serveur
++        # de titre, et une vide) et ne diffuse qu une fois, au demarrage. Il
++        # attend donc cette adresse ailleurs, et la reponse ALL.Net est le seul
++        # endroit ou elle puisse arriver.
++        #
++        # ⚠️ HYPOTHESE, PAS UN FAIT ETABLI. On sait que ces champs sont attendus ;
++        # on ne sait pas encore ce que le client en fait. Les valeurs ci-dessous
++        # sont un premier essai, a balayer si le client ne bronche pas.
++        if req.game_id == "SDEJ" and hasattr(resp, "res_ver"):
++            resp.title_uri = resp.uri
++            resp.title_host = resp.host
++            resp.location_ip = str(self.config.server.hostname)
++            self.logger.info(
++                "FGO: champs ALL.Net etendus title_uri=%s title_host=%s location_ip=%s",
++                resp.title_uri, resp.title_host, resp.location_ip,
++            )
+         resp_dict = {k: v for k, v in vars(resp).items() if v is not None}
+         resp_str = urllib.parse.unquote(urllib.parse.urlencode(resp_dict)) + "\n"
+         self.logger.debug(f"Allnet response: {resp_dict}")        
+diff --git a/titles/fgo/index.py b/titles/fgo/index.py
+index a060814..0b1ba43 100644
+--- a/titles/fgo/index.py
++++ b/titles/fgo/index.py
+@@ -22197,7 +22197,7 @@ class FgoServlet(RegularExchange, BaseServlet):
+             if command == "multi_battle_start":
+                 response_body = {
+                     "cmd_result": 1 if accepted else 2,
+-                    "special_matching_type": 0,
++                    "special_matching_type": 1,
+                     "lot_res_list": request_body.get("_local_battle_lottery_results", []) if accepted else [],
+                     "server_mb_rating": max(
+                         0,

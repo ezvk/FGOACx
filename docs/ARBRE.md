@@ -423,6 +423,100 @@ web de la vidéo.
 
 ---
 
+### 6.4 L'architecture réelle du multijoueur — relevée dans `ago.exe`
+
+Le client embarque **tout** le protocole de lobby. Relevé au voisinage de
+`NTVS_MATCHING`, ce sont ses propres noms de méthodes :
+
+```
+connect_ms   is_connected_ms   is_possible_connect_ms   NTVS_MS_PING
+connect_gs   is_connected_gs   is_room_creator
+push_gs_packet_rel   push_gs_packet_unrel   force_disconnect_gs
+is_matching_succeeded / is_matching_failed
+is_burst_matching_succeeded / is_burst_matching_failed
+```
+
+Deux serveurs distincts : **MS** (Matching Server) et **GS** (Game Server). Le
+client se connecte au MS, se fait apparier, puis rejoint le GS — l'un des deux
+clients étant `is_room_creator`.
+
+Et la structure d'échange, au voisinage de `special_matching_type`, dans l'ordre
+où le parseur la lit :
+
+```
+version user_id place_id client_max rank rating flag_state stage_id
+special_matching_type match_type quest_mb_id matching_code match_team
+permit_npc_in rank_tier rank_order match_counter
+lobby_attr room_attr result rank_max rank_min player_num
+dist_spid lobby_spid room_spid gs_spid battle_next_flag user_spid
+team room_user_num name team_id spid bot_id
+contest_ranking_range_id_1 contest_ranking_range_id_2 team_uid team_name
+```
+
+Une chaîne de services — **`dist_spid → lobby_spid → room_spid → gs_spid`** —,
+des salons avec capacité (`room_user_num`, `room_user_max`), une file
+(`match_counter`, `matching_code`), les bots explicitement autorisés ou non
+(`permit_npc_in`, `bot_id`), le classement et les championnats.
+
+⚠️ **Ce n'est PAS le protocole HTTP d'ARTEMiS.** C'est un protocole binaire
+séparé. Le lobby n'est donc pas à écrire *dans* ARTEMiS : c'est un service à
+part. ARTEMiS reste le serveur de comptes et de progression.
+
+### 6.5 ⚠️ Rien ne met ce protocole en route — mesuré, pas supposé
+
+Quatre `multi_battle_start` capturés le 2026-09-16, sur deux modes différents
+(Grail War national, puis VS par code), avec les deux bornes en jeu :
+
+| observation | mesure |
+|---|---|
+| les deux bornes envoient bien la commande | à **1,15 s** d'écart, équipes complètes |
+| la requête change-t-elle selon le mode ? | **non** — `grail_war_id: 0`, `coop_quest_id: -1`, `battle_type: 0` dans les quatre cas |
+| le code de VS est-il transmis ? | **non**, aucun champ ne le porte |
+| le client résout-il un nom de serveur ? | **non** — deux résolutions en tout : le serveur de titre, et une vide |
+| le client diffuse-t-il ? | **une seule fois**, au démarrage, entre l'imprimante et le lecteur de deck |
+| trafic entre les deux bornes ? | **zéro paquet**, malgré deux sockets UDP 30001 ouverts |
+
+Le socket existe pourtant des deux côtés :
+`ago.exe` écoute en `UDP 0.0.0.0:30001`.
+
+### 6.6 Deux interrupteurs essayés, aucun ne marche
+
+**`special_matching_type: 0 → 1`** dans la réponse à `multi_battle_start`
+(`titles/fgo/index.py:22200`). Aucun effet : mêmes requêtes, aucune résolution
+nouvelle, aucun paquet, retour à l'accueil.
+
+**Les trois champs ALL.Net manquants.** Le parseur d'AMDaemon
+(`App/am/amdaemon.exe`, chaînes voisines de `res_ver`) attend exactement :
+
+```
+uri host name nickname region0 region_name0..3 place_id setting
+country allnet_id client_timezone res_ver
+title_uri title_host location_ip
+```
+
+ARTEMiS n'en envoyait que quinze : **`title_uri`, `title_host` et
+`location_ip` manquaient**. Ils sont désormais envoyés — c'est juste en soi,
+la réponse est conforme — mais **ça ne débloque rien** : comportement client
+identique.
+
+### 6.7 La piste suivante : le rôle de la borne
+
+`FGO_Launcher.ps1` le mentionne en passant, à propos du démarrage d'AMDaemon :
+
+> *FGO's generated `amdaemon_aux.json` contains **the cabinet role selected by
+> `-sm`**; pre-starting or proxying the daemon breaks the game's process-state
+> handshake.*
+
+Dans une salle d'arcade, les bornes ont un **rôle** pour le jeu en réseau. Si la
+nôtre est déclarée autonome, l'appariement n'a aucune raison de démarrer — ce
+qui expliquerait exactement ce qu'on observe : un protocole complet, présent,
+et jamais sollicité.
+
+À regarder aussi : `MODE_SUB_DATA_TEST_MATCHING` dans le binaire, et
+`ms_login_wait_sec`, laissé à 0 dans `game_balance_param`.
+
+---
+
 ## 7. LES SOURCES ET LEURS PIÈGES
 
 **Google Drive** sert un interstitiel « Virus scan warning » de 2442 octets,
