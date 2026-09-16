@@ -517,6 +517,96 @@ et jamais sollicité.
 
 ---
 
+### 6.8 ✅ Les bornes se voient — `-sm <server|satellite>` était l'interrupteur
+
+**Trouvé dans l'aide de `ago.exe` lui-même**, après avoir cherché partout ailleurs :
+
+```
+-sm <server|satellite>    Startup Mode
+-ntvs_local_ms_ip <adresse>
+-ntvs_port   -ntvs_lan_ifno   -ntvs_use_sw_num   -ntvs_pc   -ntvs_spe_rank
+```
+
+`-sm` est l'abréviation de `--start-up-mode`, et **`start_up_mode` figure dans
+chaque en-tête** que la borne envoie au serveur depuis le premier jour — il vaut
+`1` chez nous. Le rôle de borne n'était donc pas caché : il était sous nos yeux,
+annoncé à chaque requête.
+
+Le launcher d'origine met `cabinetMode = "saved"` et **ne passe pas `-sm` du
+tout**. La borne démarrait donc en autonome, ce qui explique le silence complet
+d'UDP 30001 : le protocole n'était jamais mis en route.
+
+**Configuration qui marche**, une borne serveur et une satellite :
+
+| machine | options passées à `ago.exe` |
+|---|---|
+| ishtar | `-sm server` |
+| enlil | `-sm satellite -ntvs_local_ms_ip 192.168.1.60` |
+
+**Résultat mesuré** — après une journée entière de port muet :
+
+```
+21:00:05  192.168.1.29:30002  →  192.168.1.255:30001   UDP 16 o   (diffusion)
+21:00:05  192.168.1.60:30001  →  192.168.1.29:30002    UDP 16 o   (réponse unicast)
+```
+
+Les deux bornes diffusent leur annonce depuis le port **30002** vers la
+diffusion sur **30001**, et le serveur répond en unicast. Toutes les 14 s.
+
+Charge utile, identique des deux côtés :
+
+```
+4c46 5353   0000 0601   1000 0000   0000 0000
+« L F S S »   ?            16
+```
+
+**`LFSS`** est la signature du protocole. Elle apparaît **une seule fois** dans
+`ago.exe`, dans du code et non dans une table de chaînes — c'est une constante
+magique. Absente d'`amdaemon.exe` : ce protocole est donc porté par le jeu, pas
+par le démon.
+
+### 6.9 ⚠️ Ce qui ne marche pas encore
+
+La découverte s'établit, **la partie ne se lance pas** : retour à l'accueil, et
+seulement des battements de 16 octets — jamais de session. Et le jeu ne
+journalise rien sur cette couche, le hook ne l'instrumente pas.
+
+Trois pistes, par ordre de vraisemblance :
+
+1. **`-ntvs_lan_ifno`**, non renseigné. Mesure : enlil diffuse depuis
+   `192.168.1.29`, son **wifi**, et non depuis `192.168.1.190`, l'ethernet du
+   dock. Le jeu choisit donc mal son interface. Sur une borne d'arcade il n'y en
+   a qu'une ; ici il faut probablement la désigner.
+2. **`-ntvs_port` et `-ntvs_use_sw_num`**, non renseignés non plus. « sw » pour
+   *switch* : dans une salle, les bornes sont derrière un commutateur, et ce
+   numéro les situe peut-être les unes par rapport aux autres.
+3. Les deux bornes **diffusent** toutes les deux, alors qu'on attendrait que la
+   satellite appelle et que le serveur se contente de répondre. Le rôle est
+   peut-être partiellement pris en compte.
+
+### 6.10 ⚠️ Deux fragilités d'ishtar découvertes au pire moment
+
+Un redémarrage d'ishtar, en pleine séance, a révélé que **deux réglages
+essentiels n'étaient posés qu'à la main** et ne survivent donc pas :
+
+- `net.ipv4.ip_unprivileged_port_start` (à 777) — sans lui, podman sans
+  privilèges ne peut pas ouvrir le port 777 et **le serveur ne démarre pas** :
+  `Listen failed for HOST TCP port */777: Permission denied` ;
+- l'ouverture de **777, 7777 et 9999** sur l'interface LAN — sans elle, les
+  autres bornes pingent la machine mais n'atteignent aucun service.
+
+Ni l'un ni l'autre n'est déclaré dans `cishtar`. **Tant que ce n'est pas fait,
+ishtar ne sait pas redémarrer en état de marche.**
+
+Et une leçon d'exploitation : après un `nixos-rebuild switch` qui échoue sur
+l'activation des unités utilisateur, le gestionnaire refuse ensuite toute unité
+transitoire (`Transport endpoint is not connected`) — donc moonshine ne peut
+plus ouvrir de session. Ni le redémarrage de moonshine ni un signal de
+ré-exécution au gestionnaire n'y changent quoi que ce soit. **Seul un
+redémarrage de la machine répare.**
+
+---
+
 ## 7. LES SOURCES ET LEURS PIÈGES
 
 **Google Drive** sert un interstitiel « Virus scan warning » de 2442 octets,

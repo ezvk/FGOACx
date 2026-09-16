@@ -85,6 +85,24 @@ let
     import pathlib, re, sys
 
     largeur, hauteur, variante = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+    import os
+    # ── ROLE DE BORNE ET MATCHING SERVER ──────────────────────────────────
+    # Releve dans l aide de ago.exe le 2026-09-16, pas devine :
+    #     -sm <server|satellite>    Startup Mode
+    #     -ntvs_local_ms_ip <adresse>
+    # plus -ntvs_port, -ntvs_lan_ifno, -ntvs_use_sw_num, -ntvs_pc,
+    # -ntvs_spe_rank. NTVS est le prefixe de l API reseau du client :
+    # NTVS_MATCHING, NTVS_MS_PING, connect_ms, connect_gs, is_room_creator.
+    #
+    # Le launcher d origine met cabinetMode = "saved" et ne passe donc PAS
+    # -sm : la borne demarre en autonome, ce qui explique qu aucun appariement
+    # ne se declenche jamais et qu UDP 30001 reste muet des deux cotes.
+    # Dans une salle, une borne est SERVEUR ou SATELLITE -- l amdaemon a
+    # d ailleurs deja lan_install.server = True.
+    #
+    # ⚠️ ESSAI EN COURS, resultat inconnu. Vide = comportement d avant.
+    role = os.environ.get("FGO_SM", "").strip()
+    ms_ip = os.environ.get("FGO_MS_IP", "").strip()
     racine = pathlib.Path("/home/ezvk/fgo-install")
     src = racine / "DEVICE/runtime/segatools.runtime.ini"
     dst = racine / "DEVICE/runtime/segatools.stream.ini"
@@ -161,11 +179,17 @@ let
     dlls.append("fgohook.dll")
     chaine = " ".join(f'-k "{app}\\{d}"' for d in dlls)
 
+    ntvs = ""
+    if role:
+        ntvs += f" -sm {role}"
+    if ms_ip:
+        ntvs += f" -ntvs_local_ms_ip {ms_ip}"
+
     bat = racine / "App" / f"run-stream-{variante}.bat"
     bat.write_text(
         "@echo off\r\n"
         f"cd /d {app}\r\n"
-        f'inject.exe -d {chaine} "{app}\\ago.exe" {mode} -w --wasapi-shared > {jrn} 2>&1\r\n'
+        f'inject.exe -d {chaine} "{app}\\ago.exe" {mode}{ntvs} -w --wasapi-shared > {jrn} 2>&1\r\n'
         f"echo EXITCODE=%ERRORLEVEL% >> {jrn}\r\n"
     )
     print(f"session {variante} : {largeur}x{hauteur} {mode} | injection {dlls}")
@@ -188,6 +212,8 @@ let
     export FGO_TARGET_FPS=60 FGO_LOCAL_NETWORK=0
     export FGO_LOCAL_HTTP_PORT=777 FGO_LOCAL_BILLING_PORT=9999 FGO_LOCAL_AIME_PORT=7777
     export FGO_ZH_ENABLED=0 FGO_FULL_SURFACE_FBO=1
+    export FGO_SM="satellite"
+    export FGO_MS_IP="192.168.1.60"
 
     # ⚠️ Chemin complet vers pgrep : le PATH de l'unite Moonshine ne porte que
     # coreutils, findutils, gnugrep, gnused, systemd et xwayland -- pas procps.
