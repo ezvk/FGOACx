@@ -27,7 +27,7 @@ tutoriel jouable, le tout streamé par Moonlight.
 | Carte Aime, profil, deck, session de jeu | **oui** |
 | Streaming Moonlight (Moonshine) | **oui**, tactile compris |
 | Client sur GPU Intel | **non** — le shim qui émule `bindless_texture` casse un shader |
-| Patch anglais (`fgozh.dll`) | **non** — sa `DllMain` refuse de s'installer sous Wine |
+| Patch anglais | **oui**, sans `fgozh.dll` — voir [`client/appliquer-anglais.sh`](client/appliquer-anglais.sh) |
 | Lecteur de cartes physique | vide — seul le launcher d'origine alimente sa mémoire partagée |
 | Multijoueur | **non** — le serveur n'a ni lobby ni état partagé entre clients |
 
@@ -52,9 +52,16 @@ tous deux indispensables sous Linux.
 ```sh
 ./client/generer-runtime.py --racine ~/fgo-install --serveur 192.168.1.60 \
                             --largeur 2560 --hauteur 1440 --entree keyboard
-make -C client/fgostub          # DLL de contournement, voir plus bas
+make -C client/fgostub                     # DLL de contournement, voir plus bas
+./client/appliquer-anglais.sh ~/fgo-install   # anglais, réversible
 FGOAC_PROTON=/chemin/vers/proton ./client/lancer.sh
 ```
+
+⚠️ **`--entree keyboard`, pas `xinput`.** Le défaut du script d'origine est
+`xinput` : sans manette, *rien ne répond*, et ça ne se voit pas — le tutoriel
+enchaîne ses attaques scriptées tout seul. Commandes clavier : **WASD**
+déplacement, **clic droit** attaque, Espace Noble Phantasm, clic gauche dans
+les menus, Entrée maintenu pour la carte Aime.
 
 ## Les pièges, condensés
 
@@ -82,9 +89,15 @@ relancer. Les journaux ordinaires n'en montrent **rien**. C'est ce fichier qui a
 révélé que `start` levait une `FileNotFoundError` sur un fichier de données non
 monté, ce que le jeu affichait comme « erreur de connexion réseau ».
 
-**Le conteneur a besoin de quatre montages**, pas d'un seul. Le couplage
+**Le conteneur a besoin de cinq montages**, pas d'un seul. Le couplage
 serveur → client est profond : `/Server` pour `data/fgo-master`, `/App` pour
 `deck.json`, `/DEVICE` pour le manifeste des cartes.
+
+Et surtout **`/state`, le plus facile à oublier** : le titre FGO persiste les
+profils dans `../state/fgo-players.json`, chemin relatif à `/app` qui résout
+hors de tout montage. Sans lui la progression s'écrit dans la couche éphémère
+du conteneur, disparaît à chaque recréation, et le joueur refait le tutoriel
+sans comprendre pourquoi.
 
 **Ne pas lancer `FGOAC scooby.exe`.** Toute sa chaîne est en PowerShell, absent
 de Wine — et PowerShell 7 portable ne s'exécute pas non plus dans un préfixe

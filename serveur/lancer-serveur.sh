@@ -9,6 +9,12 @@
 #            réseau » en boucle, sans rien dans les journaux ordinaires
 #   /App     deck.json (configuration du deck) et rom/aet (bannières de summon)
 #   /DEVICE  print/FGO11_AllServants + library-manifest.json
+#   /state   ⚠️ LE PLUS FACILE À OUBLIER, ET LE PLUS COÛTEUX. Le titre FGO
+#            persiste les profils dans « ../state/fgo-players.json »
+#            (titles/fgo/config.py), chemin RELATIF à /app, qui résout donc en
+#            /state -- hors de tout montage. Sans lui le serveur écrit dans la
+#            couche éphémère du conteneur : la progression est perdue à chaque
+#            recréation, et le joueur refait le tutoriel sans comprendre.
 set -u
 
 SERVEUR="${FGOAC_SERVEUR:?répertoire Server/ du paquet Cloud23333}"
@@ -46,6 +52,7 @@ podman run -d --pod "$POD" --name fgo-artemis \
   -v "$SERVEUR:/Server:ro" \
   -v "$CLIENT/App:/App:ro" \
   -v "$CLIENT/DEVICE:/DEVICE:ro" \
+  -v "$SERVEUR/state:/state:Z" \
   -v "${FGOAC_LOGS:-$SERVEUR/../logs}:/logs:Z" \
   -w /app "$IMAGE" >/dev/null
 

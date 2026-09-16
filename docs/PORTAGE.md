@@ -653,3 +653,69 @@ montrait :
   (`1 + 30 × 44`) reste vide, seul le launcher l'alimente. Non bloquant jusqu'ici.
 - Le billing (port 9999) n'est jamais contacté ; la chaîne TLS est pourtant
   valide (`server.pem` signé par `DEVICE/ca.crt`, `CN=ib.naominet.jp`).
+
+---
+
+# ✅ ANGLAIS ET CLAVIER (2026-09-16 ~15h10)
+
+## ⚠️ `fgozh.dll` ne se charge pas — contourné sans lui
+
+Sa `DllMain` renvoie FALSE sous Wine. Établi par élimination :
+
+- `FGO_ZH_ENABLED=1` n'y change rien ;
+- il échoue **seul**, sans `fgohook` — donc pas une histoire de signature
+  d'exécutable altérée par l'autre hook ;
+- aucune exception dans le journal Wine : la DLL est mappée, relogée, son
+  cookie de sécurité posé, son callback TLS enregistré, `KERNEL32` résolu, puis
+  elle **refuse délibérément**.
+
+Ses étapes internes, lues dans ses chaînes UTF-16 :
+`REDIRECT_INDEX` → `EXE_TEXT` → `FLAVOR_NEWLINES` → `FONT_TRACE` →
+`TEXT_MEASURE_CACHE`. Le journal s'arrête après la **première**. L'échec est
+donc dans `EXE_TEXT`, la seule étape qui patche du texte **dans l'exécutable en
+mémoire** — tout le reste n'étant que redirection de fichiers.
+
+⚠️ Les traces s'activent par des **fichiers marqueurs** (`file-trace.enabled`,
+`font-trace.enabled`, `text-perf.enabled`), pas par variable d'environnement.
+Les poser dans `App/` n'a pas suffi ; l'emplacement exact reste à trouver.
+
+## La voie qui marche : remplacer les fichiers
+
+`App/zh/rom/` est un **miroir anglais** de `App/rom/` — 1683 fichiers, tous avec
+un homologue. On copie par-dessus, après sauvegarde :
+
+    # sauvegarde des japonais (605 Mo) puis copie
+    → 1671 fichiers remplaces (12 etaient deja identiques)
+
+Résultat : menus, textes et récits en anglais, **sans `fgozh`**.
+
+**Ce qui reste japonais :** les chaînes compilées dans `ago.exe`
+(`executable-text.json`, 441 Ko — c'est l'étape `EXE_TEXT`), et les artworks que
+scooby n'a pas refaits (bannières et résultats co-op, boutiques d'événements
+tardives, explicitement documentés comme non traités par l'amont).
+
+Réversible : `_sauvegarde-rom-jp/`.
+
+## ⚠️ `io4.mode` : keyboard, pas xinput
+
+Le défaut du script d'origine est `xinput`. Sans manette, **rien ne répond** —
+et ça ne se voit pas, le tutoriel enchaînant ses attaques scriptées tout seul.
+`mode=keyboard` dans `[io4]`, plus `inputMode` dans `fgo-launcher.json`.
+
+Commandes : **WASD** déplacement, **clic droit** attaque, Espace Noble Phantasm,
+Maj sprint, F cible suivante, C recentrer, **clic gauche** dans les menus
+(ils sont tactiles quel que soit le mode), Entrée maintenu pour la carte Aime.
+
+⚠️ Le fichier runtime n'est lu qu'**au démarrage** : tout changement demande de
+relancer le jeu.
+
+## Serveur porté en V1.02
+
+L'arbre initial venait de la V1.00 seule. Vérifié par somme SHA-256 sur les
+22 fichiers `Server/` du manifeste V1.02 : 17 identiques à l'octet près, et les
+5 écarts sont exactement les fichiers que scooby écrase, plus le correctif
+`basename`. `grail_recovery.py` présent, `talk_unlocks.json` complet.
+
+⚠️ Scooby ne traduit **rien** côté serveur : sur ses 1695 fichiers, 1689 sont
+dans `App/` et seulement 5 dans `Server/`, tous fonctionnels. Il n'y a pas de
+« serveur anglais » à construire.
