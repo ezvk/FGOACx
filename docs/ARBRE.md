@@ -194,6 +194,10 @@ après tout changement de pile graphique.**
 | Mesa radeonsi (AMD) | **non** | ARB présent, NV absent ; le shim ne sauve pas |
 | Mesa iris (Intel) | **non** | ni ARB ni NV |
 
+⚠️ **Ce tableau décrit NOTRE paquet, pas le jeu.** Un patch AMD tiers existe et
+fonctionne sur RX 9070XT — voir §6.2. La ligne « Mesa radeonsi » dit donc « pas
+encore chez nous », pas « impossible ».
+
 ---
 
 ## 5. LE STREAMING
@@ -213,21 +217,84 @@ Moonshine ne s'y transpose pas.
 
 ---
 
-## 6. LE MULTIJOUEUR — le plus incertain
+## 6. LE MULTIJOUEUR — tranché le 2026-09-16
 
-**Établi par lecture du code.** ARTEMiS n'a **ni lobby ni état partagé entre
-clients**. Son code co-op ne gère que la comptabilité des récompenses, et son
-test « online » traite les adversaires comme des PNJ. Le serveur fabrique des
-réponses hors ligne.
+**La contradiction est levée, et les deux lectures étaient justes.**
 
-⚠️ **OUVERT, ET PRIORITAIRE À VÉRIFIER.** Il est rapporté que **la version
-chinoise aurait déjà du multijoueur**. Si c'est exact, tout le cadrage ci-dessus
-est à revoir : il ne s'agirait plus d'écrire une couche mais d'en activer une.
-**À investiguer avant tout développement.**
+Ce que dit le code d'ARTEMiS reste exact : **ni lobby ni état partagé entre
+clients**, le code co-op ne gère que la comptabilité des récompenses, et son
+test « online » traite les adversaires comme des PNJ. Mais ARTEMiS est le
+**单机版** — la version *solo*. Il existe une autre distribution, le **联机版**,
+la version *en réseau*, et c'est elle qui a le multijoueur.
 
-Première étape mesurable et non destructive : tenter une quête coopérative en
-jeu pendant qu'on capture le serveur. Les commandes décodées diront ce que le
-client tente.
+Trois sources indépendantes le disent :
+
+1. **Un commentaire sous la vidéo YouTube `UZkV_xaG_iE`** :
+   « Guys, the information is confirmed. On Bilibili, besides the single-player
+   version shown in the video, there is also an online multiplayer version that
+   supports matchmaking. »
+
+2. **Les titres Bilibili opposent explicitement les deux mots.** Le même auteur
+   (凡一尘) a publié, à deux jours d'intervalle, `【FGOArcade】AMD A卡补丁`
+   **`单机版`** `PVP模式4K分辨率测试` (`BV1PoYv6oEhx`) *et* le même titre avec
+   **`联机版`** (`BV1rAYi6XEmN`). Même patch, deux versions du jeu.
+
+3. **La vidéo tutoriel `BV1oaYU6nEUJ`** (猜不到的未来) nomme l'infrastructure :
+   « 启动器制作及服务器维护者：SinnohDawn » — créateur du launcher **et
+   mainteneur du serveur**.
+
+### 6.1 ⚠️ Ce n'est pas un déploiement local
+
+Point de cadrage décisif : le multi chinois est un **serveur hébergé** par
+SinnohDawn, auquel un launcher dédié se connecte. Le paquet de Cloud23333 qu'on
+a déployé installe un serveur **local** — d'où l'absence de lobby, qui n'est
+donc ni un oubli ni une fonction désactivée.
+
+Conséquence : il n'y a **rien à « activer »** dans ARTEMiS. Deux chemins
+restent, et ils ne s'excluent pas :
+
+- **(a)** observer le protocole du 联机版 pour le réimplémenter — le client
+  chinois parle à un serveur dont on peut capturer les échanges ;
+- **(b)** écrire la couche de zéro au-dessus d'ARTEMiS.
+
+Coordonnées relevées, à exploiter pour (a) :
+
+| quoi | où |
+|---|---|
+| SinnohDawn (launcher + serveur) | `space.bilibili.com/18526617` — QQ群 **1103409252** |
+| co-op en ligne, événement CCC | `BV1Rpe56pEqc` |
+| co-op en ligne, « 柱子战 » | `BV1pKe56NEig` |
+
+### 6.2 Le patch AMD existe, et il est signé
+
+Trouvaille collatérale qui vise §4. Description de `BV1rAYi6XEmN` :
+
+> 操作系统：win10 GPU：9070XT 驱动版本26.5.1 联机游戏版本，分辨率4K，无插帧嗯跑
+> 本补丁由@Vancion 制作
+
+Patch par **@Vancion**, testé sur une **RX 9070XT**, pilote 26.5.1, en 4K.
+Autrement dit le « NVIDIA seulement » de §4 est une limite **du paquet**, pas du
+jeu : quelqu'un a déjà franchi l'obstacle de §4.1. À récupérer — c'est
+probablement le chemin le plus court vers le client AMD, plus court que de
+réparer nous-mêmes l'émulation du shim.
+
+Réserve honnête : la 9070XT est une carte **discrète** RDNA4. Rien ne dit encore
+que le patch couvre un **iGPU** comme le 780M d'enlil.
+
+### 6.3 ⚠️ Piège : l'API Bilibili ment par le silence
+
+`api.bilibili.com/x/web-interface/wbi/search/type` répond correctement quelques
+requêtes, puis renvoie **`code: 0`, `message: OK`** avec un `data` qui ne
+contient plus que `v_voucher` — **aucun résultat**. C'est un blocage anti-bot
+déguisé en réponse vide, et sans précaution on le lit comme « ce contenu
+n'existe pas ».
+
+Parade : **relancer une requête témoin** dont on sait qu'elle a déjà renvoyé 20
+résultats. Si le témoin passe à 0, c'est le blocage, pas le corpus.
+
+L'endpoint `x/web-interface/view` (détail d'une vidéo), lui, est bloqué
+d'emblée : il rend une page HTML « 出错啦 » et non du JSON. Passer par la page
+web de la vidéo.
 
 ---
 
