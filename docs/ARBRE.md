@@ -157,46 +157,129 @@ fichiers, tous avec homologue. On copie par-dessus. Réversible.
 
 ---
 
-## 4. LE MATÉRIEL — la question la plus mal comprise
+## 4. LE MATÉRIEL — l'AMD fonctionne
 
-### 4.1 ⚠️ La raison réelle du « NVIDIA seulement »
+**Résolu le 2026-09-16.** FGO Arcade tourne à **60 images/s sur un Radeon 780M**
+(iGPU Ryzen 8945HS), sous Mesa 26.2.1, via Proton. Tout ce qui suit corrige une
+analyse antérieure qui concluait à l'impossibilité.
 
-`ago.exe` demande **deux extensions NVIDIA propriétaires**, trouvées en
-instrumentant un proxy `opengl32` qui journalise les résolutions échouées :
+### 4.1 ⚠️ On testait la mauvaise couche — et la réponse était dans le paquet
 
-| Extension | Équivalent ARB | radeonsi |
+Le paquet embarque **deux** couches de compatibilité OpenGL, et `GUIDE_EN.md`,
+livré avec l'installation, les distingue en une phrase :
+
+> AMD: the launcher installs **the older compatibility layer** on a fresh
+> install without an NVIDIA card; it runs on RX 500, RX 6000, RX 7600 and
+> desktop Ryzen graphics. **The newer layer by fluphus** (Settings > Display)
+> runs on the RX 7900 XTX; **on other cards it crashes at the first battle**.
+
+| couche | fichier | comment elle se charge |
 |---|---|---|
-| `GL_NV_bindless_texture` | **oui** (`glGetTextureHandleARB`) | traduisible |
-| `GL_NV_shader_buffer_load` | **AUCUN** | absent, sans substitut |
+| « older » | `compat/fgoglcompat.dll` | **injectée**, et **avant `fgohook`** |
+| « newer », de fluphus | `compat/amd-shim/opengl32.dll` | posée dans `App/`, chargée par l'éditeur de liens |
 
-La seconde fournit des **adresses GPU brutes** (`GL_BUFFER_GPU_ADDRESS_NV`),
-concept que Mesa n'expose pas et que l'ARB ne remplace pas.
+`FGO_Launcher.ps1:606` donne la raison de l'ordre :
+« Must load before fgohook: MinHook on opengl32 exports, IAT left for fgohook ».
+Et `run-gl.bat`, livré avec le paquet, fait déjà exactement cela — on ne s'en
+était jamais servi.
 
-### 4.2 Ce que ça implique pour le shim de fluphus
+**Leçon de méthode, la plus chère de ce portage** : lire les `*.md` et les
+lanceurs **livrés dans le paquet** avant de désassembler quoi que ce soit. Le
+temps passé à grepper les exports d'une DLL, écrire un proxy `wglGetProcAddress`
+et décoder un conteneur FARC aurait été économisé par `ls *.md`.
 
-Sa table `_amdshim_map_handle_pairs` **n'est pas une lubie** : c'est
-l'émulation de ces adresses par indirection, seule voie possible hors NVIDIA,
-et qui impose forcément de réécrire les shaders.
+### 4.2 Ce que fait `fgoglcompat`, et pourquoi ça suffit
 
-⚠️ **Mais sur un GPU qui a `bindless` nativement, le retirer est obligatoire** —
-sa réécriture produit `0(763) : error C1068: array index out of bounds`.
+Relevé dans ses chaînes, puis confirmé par son journal `App/captures/compat.log` :
 
-⚠️ **Et `App/shader-cache-r2/` est le cache DU SHIM**, pas du jeu. Preuve :
-NVIDIA sans shim → 0 fichier et ça marche ; AMD avec shim → 109. **Le purger
-après tout changement de pile graphique.**
+- un résolveur `wglGetProcAddress` qui **aliase chaque entrée NV vers son ARB** —
+  `glGetTextureHandleNV -> glGetTextureHandleARB`, `glUniformHandleui64NV ->
+  ...ARB`, 24 fonctions, toutes en `OK` ;
+- une **traduction des shaders** au passage par `glShaderSource` /
+  `glCompileShader`, qui remplace le préambule NV par
+  `#extension GL_ARB_bindless_texture : require`,
+  `GL_ARB_gpu_shader_int64 : require`, `GL_ARB_enhanced_layouts : require`.
 
-### 4.3 État par pilote
+⚠️ **Correction d'une erreur de §4.1 antérieure.** Nous avions écrit que
+`GL_NV_shader_buffer_load` « n'a aucun équivalent ARB » et rendait l'AMD
+impossible. C'est faux en pratique : **aucun des 170 shaders de
+`App/rom/shader.farc` ne déclare cette extension**, et la seule entrée NV que
+notre proxy n'arrivait pas à résoudre — `glGetNamedBufferParameterui64vNV` — est
+fournie par `fgoglcompat`. Le blocage réel était ailleurs.
+
+### 4.3 Le blocage réel : la sévérité du compilateur GLSL de Mesa
+
+Avec la bonne couche, le jeu va loin puis s'arrête net :
+
+```
+present frames=1 success=1
+compile shader=316 capture=185 success=0
+  0:77(3): error: embedded structure declarations are not allowed
+unhandled exception 0xc0000005 at 0000000140C084F7
+```
+
+Le `0xC0000005` est la **conséquence** — le moteur se sert d'un programme qui n'a
+pas compilé — pas la cause. Et la cause n'est **pas** une extension manquante :
+le 780M expose bien `GL_ARB_bindless_texture`, `GL_ARB_gpu_shader_int64` et
+`GL_ARB_enhanced_layouts`. C'est le compilateur GLSL de Mesa qui est plus strict
+que celui de NVIDIA.
+
+La construction fautive n'est pas dans `shader.farc` : les 170 shaders en ont été
+extraits et aucun ne déclare de structure imbriquée. Elle est **produite par la
+réécriture de `fgoglcompat` elle-même**.
+
+### 4.4 Le correctif : une option driconf de Mesa
+
+Mesa prévoit exactement ce relâchement, et l'applique déjà à un autre jeu Windows
+sous Wine dans son propre `share/drirc.d/00-mesa-defaults.conf` :
+
+```xml
+<application name="MDK2 HD" executable="mdk2hd.exe">
+  <option name="allow_glsl_embedded_structure_declarations" value="true"/>
+</application>
+```
+
+Ce précédent vaut confirmation que la correspondance se fait sur le nom de
+l'**exécutable Windows** : Mesa lit `/proc/<pid>/comm`, et `pgrep -x ago.exe`
+répond. On pose donc la même règle pour `ago.exe`.
+
+⚠️ **`/etc/drirc` NE SUFFIT PAS.** Posée d'abord dans `/etc`, la règle n'a **rien**
+changé : erreur identique, même shader 316, même message. Le jeu tourne dans
+**pressure-vessel**, le conteneur d'umu-launcher, dont le `/etc` n'est pas celui
+de l'hôte — l'environnement du processus le disait déjà, `XDG_DATA_DIRS`
+commençant par `/usr/lib/pressure-vessel/overrides/share`, chemin qui **n'existe
+pas** sur l'hôte. En revanche `HOME=/home/ezvk` **à l'intérieur** du conteneur :
+le répertoire personnel y est monté. C'est donc **`~/.drirc`** qui porte.
+
+Le module `nix/moonshine-deux-gpu.nix` pose les deux.
+
+### 4.5 Résultat mesuré
+
+```
+compile progress 100/1719 … 1200/1719 … (aucune erreur)
+present frames=2297 → 2597 → 2897 → 3197, par pas de 5 s
+```
+
+300 images toutes les 5 secondes : **60 img/s en régime**, sur un matériel que
+`GUIDE_EN.md` donne pour « not covered by either layer yet ». La première
+compilation prend environ 3 min 30 ; ensuite le cache de Mesa
+(`~/.cache/mesa_shader_cache`, 2032 fichiers écrits pendant ce lancement) la
+raccourcit fortement.
+
+⚠️ `App/shader-cache-r2/` **n'a rien à voir** : il reste vide et n'apparaît pas une
+fois dans `compat.log`. Le cache utile est celui de Mesa, et il survit aux
+relancements — contrairement à ce qu'affirmait une version antérieure de §4.2.
+
+### 4.6 État par pilote
 
 | Pilote | État | Comment |
 |---|---|---|
-| NVIDIA propriétaire | **fonctionne** | sans shim, cache vide |
+| NVIDIA propriétaire | **fonctionne** | aucune couche |
 | NVIDIA sur machine hybride | **fonctionne** | `__NV_PRIME_RENDER_OFFLOAD=1` + `__GLX_VENDOR_LIBRARY_NAME=nvidia` |
-| Mesa radeonsi (AMD) | **non** | ARB présent, NV absent ; le shim ne sauve pas |
-| Mesa iris (Intel) | **non** | ni ARB ni NV |
-
-⚠️ **Ce tableau décrit NOTRE paquet, pas le jeu.** Un patch AMD tiers existe et
-fonctionne sur RX 9070XT — voir §6.2. La ligne « Mesa radeonsi » dit donc « pas
-encore chez nous », pas « impossible ».
+| Mesa radeonsi, iGPU Ryzen 780M | **fonctionne, 60 img/s** | `fgoglcompat.dll` avant `fgohook` + `~/.drirc` |
+| Mesa radeonsi, AMD discrète | **non mesuré chez nous** | attendu au moins aussi bon ; le guide couvre RX 500/6000/7600 |
+| Mesa iris (Intel) | **exclu par construction** | iris n'expose pas `GL_ARB_bindless_texture` : la couche traduit *vers* une extension que la carte n'a pas |
+| couche fluphus | **non testée** | session Moonlight prête ; le guide la limite à la RX 7900 XTX |
 
 ---
 

@@ -1,5 +1,36 @@
 # Matériel : quelles cartes graphiques peuvent faire tourner le client
 
+> ## ⚠️ CE DOCUMENT EST DÉPASSÉ — lire `ARBRE.md` §4
+>
+> **Le client AMD fonctionne depuis le 2026-09-16 : 60 images/s sur un Radeon
+> 780M (iGPU Ryzen 8945HS), Mesa 26.2.1, sous Proton.**
+>
+> Tout ce qui suit a été écrit avant, et deux de ses conclusions sont fausses :
+>
+> 1. **« `GL_NV_shader_buffer_load` n'a aucun équivalent et rend l'AMD
+>    impossible »** — faux en pratique. Aucun des 170 shaders de
+>    `App/rom/shader.farc` ne déclare cette extension, et la seule entrée NV que
+>    notre proxy ne résolvait pas, `glGetNamedBufferParameterui64vNV`, est
+>    fournie par `fgoglcompat.dll`.
+>
+> 2. **« le shim de fluphus »** — il y a **deux** couches dans le paquet, pas
+>    une. `compat/fgoglcompat.dll` (« older », **injectée avant `fgohook`**) est
+>    celle qui marche largement ; `compat/amd-shim/opengl32.dll` (fluphus) est
+>    limitée à la RX 7900 XTX. Nous n'avions essayé **ni l'une ni l'autre** :
+>    l'`opengl32.dll` que ce document décrit comme « le shim » était en réalité
+>    notre propre proxy de diagnostic, de 42 Ko.
+>
+> Le vrai point dur n'était pas une extension manquante mais la **sévérité du
+> compilateur GLSL de Mesa** (`embedded structure declarations are not
+> allowed`), levée par l'option driconf `allow_glsl_embedded_structure_
+> declarations` — à poser dans **`~/.drirc`**, pas dans `/etc/drirc`, le jeu
+> tournant dans le conteneur pressure-vessel.
+>
+> **Et la réponse était dans `GUIDE_EN.md`, livré avec le paquet.** Le contenu
+> ci-dessous est conservé parce qu'il documente des mesures réelles et les
+> pièges rencontrés, mais ses conclusions sont remplacées par `ARBRE.md` §4.
+
+
 ## Le critère : `GL_ARB_bindless_texture`
 
 FGO Arcade est un jeu **OpenGL** — `ago.exe` importe `OPENGL32.dll`, pas
