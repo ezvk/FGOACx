@@ -12,6 +12,14 @@ Win32=203 », soit ERROR_ENVVAR_NOT_FOUND, et le jeu refuse de démarrer.
 Usage :
     generer-runtime.py --racine ~/fgo-install --serveur 192.168.1.60 \
                        --largeur 2560 --hauteur 1440 --entree keyboard
+
+Second client sur le meme serveur -- il lui faut une IDENTITE DISTINCTE, sinon
+ARTEMiS le voit comme la meme borne et le meme joueur :
+    generer-runtime.py --racine ~/fgo-install --serveur 192.168.1.60 \
+                       --keychip A69E-01A88888889 --pcbid ACAE01A99999998 \
+                       --suffixe-adresse 43
+et une carte Aime differente : supprimer DEVICE/aime.txt, aimeGen=1 en genere
+une neuve au premier scan.
 """
 import argparse
 import pathlib
@@ -57,8 +65,30 @@ def main() -> None:
     a.add_argument("--entree", default="keyboard", choices=("keyboard", "xinput"))
     a.add_argument("--sous-reseau", default="192.168.1.0")
     a.add_argument("--diffusion", default="192.168.1.255")
+    # ── IDENTITE DE LA BORNE ──────────────────────────────────────────────
+    # Deux clients sur le meme serveur DOIVENT differer sur ces trois points,
+    # sinon ils sont la meme borne et le meme joueur pour ARTEMiS.
+    # Constate le 2026-09-16 : ishtar et enlil partageaient keychip, pcbid,
+    # carte Aime ET addrSuffix.
+    a.add_argument("--keychip", default=None,
+                   help="numero de serie du keychip. Motif observe en vrai : "
+                        r"A\d{2}(E|X)-(01|20)[ABCDU]\d{8}")
+    a.add_argument("--pcbid", default=None,
+                   help="ALLS MAIN ID, sans tiret (nom d hote Windows)")
+    a.add_argument("--suffixe-adresse", default="42",
+                   help="dernier octet sur le sous-reseau virtualise par netenv")
+    a.add_argument("--netenv", default="1", choices=("0", "1"),
+                   help="0 = utiliser le VRAI reseau local. segatools avertit "
+                        "que netenv 'may interfere with head-to-head play' ; "
+                        "si on le desactive, --sous-reseau doit etre celui de "
+                        "la machine et commencer par 192.168.")
     a.add_argument("--version", default="11.00")
     args = a.parse_args()
+    identite = []
+    if args.keychip:
+        identite.append(("keychip", "id", args.keychip))
+    if args.pcbid:
+        identite.append(("pcbid", "serialNo", args.pcbid))
 
     racine = pathlib.Path(args.racine).expanduser().resolve()
     win = args.prefixe_win or (args.lettre + "\\" + racine.name)
@@ -85,10 +115,11 @@ def main() -> None:
         ("dns", "startupPort", "777"),
         ("dns", "billingPort", "9999"),
         ("dns", "aimedbPort", "7777"),
-        ("netenv", "enable", "1"),
+        ("netenv", "enable", args.netenv),
         ("netenv", "routerSuffix", "1"),
-        ("netenv", "addrSuffix", "42"),
+        ("netenv", "addrSuffix", args.suffixe_adresse),
         ("netenv", "broadcast", args.diffusion),
+        *identite,
         ("gfx", "windowed", "1"),
         ("gfx", "framed", "0"),
         ("gfx", "width", str(args.largeur)),
