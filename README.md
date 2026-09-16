@@ -26,7 +26,8 @@ tutoriel jouable, le tout streamé par Moonlight.
 | Client sous Proton, jusqu'au jeu | **oui**, sur NVIDIA |
 | Carte Aime, profil, deck, session de jeu | **oui** |
 | Streaming Moonlight (Moonshine) | **oui**, tactile compris |
-| Client sur GPU Intel | **non** — le shim qui émule `bindless_texture` casse un shader |
+| Client sur machine hybride | **oui** — `__NV_PRIME_RENDER_OFFLOAD=1` force la NVIDIA |
+| Client sur AMD ou Intel | **non** — `GL_NV_shader_buffer_load` n'a aucun équivalent, voir [docs/MATERIEL.md](docs/MATERIEL.md) |
 | Patch anglais | **oui**, sans `fgozh.dll` — voir [`client/appliquer-anglais.sh`](client/appliquer-anglais.sh) |
 | Lecteur de cartes physique | vide — seul le launcher d'origine alimente sa mémoire partagée |
 | Multijoueur | **non** — le serveur n'a ni lobby ni état partagé entre clients |
@@ -62,6 +63,12 @@ FGOAC_PROTON=/chemin/vers/proton ./client/lancer.sh
 enchaîne ses attaques scriptées tout seul. Commandes clavier : **WASD**
 déplacement, **clic droit** attaque, Espace Noble Phantasm, clic gauche dans
 les menus, Entrée maintenu pour la carte Aime.
+
+## Où commencer
+
+[**docs/ARBRE.md**](docs/ARBRE.md) est la carte du terrain : huit branches, et
+pour chaque nœud ce qui est **établi**, **comment on le sait**, et ce qui reste
+**ouvert**. À lire avant le reste.
 
 ## Les pièges, condensés
 
