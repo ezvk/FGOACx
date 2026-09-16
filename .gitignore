@@ -8,3 +8,14 @@
 *.zip
 *.ini
 !client/fgostub/*.c
+traduction/dictionnaire.json
+traduction/glossaire.json
+traduction/douteuses.json
+traduction/*.log
+traduction/basic_*.json
+# Sauvegardes locales et artefacts : jamais versionnes.
+# Le dictionnaire et ses sauvegardes contiennent le texte japonais du jeu.
+traduction/dictionnaire.json.*
+traduction/*.avant-*
+**/__pycache__/
+*.pyc
