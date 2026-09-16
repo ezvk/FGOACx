@@ -211,7 +211,49 @@ plafond **codé en dur à 60 s** (`webserver/mod.rs:837`). Une valeur supérieur
 garantit l'échec. **30 fonctionne.**
 
 **Sunshine** (enlil) capture un écran existant — logique inverse, le script de
-Moonshine ne s'y transpose pas.
+Moonshine ne s'y transpose pas. Il reste installé mais n'est plus autodémarré :
+enlil est passée à Moonshine le 2026-09-16, voir §5.1.
+
+### 5.1 Un GPU par session — `nix/moonshine-deux-gpu.nix`
+
+Moonshine ouvre un compositeur **par session**. Sur une machine à deux cartes,
+chaque GPU peut donc devenir une **entrée distincte dans la liste Moonlight** :
+plus besoin de SSH et d'un script pour basculer entre « jouer » et « chercher ».
+
+⚠️ **`compositor.gpu` est GLOBAL, pas par application.** On ne peut pas donner
+une carte à chaque session ; le GPU du **jeu** se choisit dans le `command` de
+chaque entrée (`__NV_PRIME_RENDER_OFFLOAD` + `__GLX_VENDOR_LIBRARY_NAME` d'un
+côté, rien de l'autre). Le compositeur, lui, est **unique et partagé**.
+
+D'où le choix qui compte : **le compositeur va sur l'iGPU AMD**, pas sur la
+NVIDIA. Raison mesurée sur ishtar (2026-09-03) : un DMA-BUF ne traverse pas
+d'une carte à l'autre sans peine — « No suitable memory type for DMA-BUF
+import », flux vide. En plaçant le compositeur sur l'iGPU, la session AMD est en
+zéro-copie et la session NVIDIA emprunte le PRIME offload, **le sens normal sur
+un portable hybride**. L'inverse mettrait la session AMD en reverse-PRIME, le
+sens fragile.
+
+Les deux cartes savent encoder — relevé `vulkaninfo` du 2026-09-16, témoin
+`VK_KHR_swapchain` présent 9 fois pour prouver que le relevé a tourné :
+
+| GPU | encodage Vulkan |
+|---|---|
+| AMD Radeon 780M (RADV PHOENIX) | av1, h264, h265, intra_refresh, quantization_map, queue, + `VK_VALVE_video_encode_rgb_conversion` |
+| NVIDIA RTX 4060 Laptop | av1, h264, h265, intra_refresh, quantization_map, queue |
+
+⚠️ **Les deux sessions sont EXCLUSIVES aujourd'hui**, et c'est une vraie limite :
+elles partagent `App/`, où la bascule se joue sur la **présence** du shim
+`opengl32.dll`, et le cache `App/shader-cache-r2`. Les lanceurs **refusent** de
+démarrer si l'autre variante tourne, plutôt que de corrompre en silence. Pour le
+test multijoueur à deux clients sur une seule machine, il faudra un second arbre
+`App` — ou, piste non mesurée, garder le shim en place et le neutraliser côté
+NVIDIA par `WINEDLLOVERRIDES=opengl32=b` (builtin).
+
+⚠️ **Le module de nixpkgs n'est pas celui de l'amont.** Pas de `uid`, pas
+d'`openFirewall`, pas de `logFilter` ; à la place `firewallInterfaces` (qui
+n'ouvre **rien** si la liste est vide), `environment` et `extraPackages`. Et
+`environment` **n'est pas hérité par les applications lancées** — c'est ce qui
+permet d'épingler le GPU du service sans aveugler la session NVIDIA.
 
 **Établi.** Le tactile passe : `TOUCH: synthetic event physical=1`.
 
